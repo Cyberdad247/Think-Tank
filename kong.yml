@@ -1,0 +1,39 @@
+# Kong API Gateway Configuration
+
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: backend-api
+    url: http://host.docker.internal:8000
+    routes:
+      - name: api-route
+        paths:
+          - /api
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Content-Type
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: local
+
+  - name: frontend
+    url: http://host.docker.internal:3000
+    routes:
+      - name: frontend-route
+        paths:
+          - /

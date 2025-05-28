@@ -1,0 +1,440 @@
+# 🏁  THINKTANK-IO – **“One-Click Go-to-Market”** Playbook  
+*(hybrid Python + TypeScript stack – everything wired, optimised, SEO-ready, Auth0-secured, CI/CD-driven)*  
+
+---
+
+## 0.  Bird’s-Eye (Hybrid) Architecture  
+
+```mermaid
+flowchart LR
+    subgraph Client
+        PWA[Next.js PWA<br/> (ISR + PWA + Tailwind)]
+        Mobile[Expo App]
+    end
+
+    subgraph CDN / Edge
+        vercel[Vercel Edge CDN]
+        imgOpt[Next/Image + sharp]
+        ogGen[/api/og (OpenGraph)] 
+    end
+
+    subgraph Gateway
+        Kong[Kong / APISIX]
+    end
+
+    subgraph SaaS-BFF
+        Nest(NestJS (BFF) <br/> WebSocket + Auth + Billing)
+        DBApp[(PostgreSQL – app)]
+        Redis[(Redis – sessions)]
+    end
+
+    subgraph AI-Core
+        FastAPI[FastAPI (Agentic RAG & Debate)]
+        Vec[(Qdrant – vectors)]
+        DBLLM[(PostgreSQL – AI data)]
+    end
+
+    subgraph 3rd-Party
+        Auth0
+        Resend
+        Mux
+        Plausible[(Analytics)]
+    end
+
+    PWA -- HTML/WS --> vercel --> Kong
+    Kong --> Nest
+    Kong -->|/api/ai| FastAPI
+    Nest <-- Auth/JWT --> Auth0
+    Nest --> Redis
+    Nest --> DBApp
+    FastAPI --> Vec & DBLLM
+
+    Nest--resend-->Resend
+    PWA--HLS-->Mux
+    PWA--Analytics-->Plausible
+    PWA --> ogGen
+    imgOpt-.->PWA
+```
+
+---
+
+## 1.  Repo / Monorepo Layout  (Turborepo)
+
+```
+/apps
+  /web               (Next.js 14)
+  /mobile            (Expo)
+  /api-bff           (NestJS)
+  /ai-core           (FastAPI)
+/packages
+  /ui                (shadcn components, Tailwind config)
+  /types             (zod + ts types shared)
+/infra
+  docker-compose.yml
+  fly.toml
+  kong.yaml
+  k8s/               (optional)
+/content
+  /blog/*.mdx
+/scripts
+  new-post.ts
+  sync-notion.ts
+```
+
+---
+
+## 2.  API-Gateway (Kong)  
+
+`infra/kong.yaml`
+
+```yaml
+_format_version: "3.0"
+services:
+  - name: bff
+    url: http://api-bff:3000
+    routes:
+      - name: bff_route
+        paths: ["/api/app"]
+        strip_path: true
+  - name: ai
+    url: http://ai-core:8000
+    routes:
+      - name: ai_route
+        paths: ["/api/ai"]
+        strip_path: true
+plugins:
+  - name: cors
+  - name: rate-limiting
+    config: { minute: 60, policy: redis }
+```
+
+---
+
+## 3.  Auth Flow
+
+1. PWA → Auth0 Universal Login → returns `access_token` (audience = `THINKTANK_API`).  
+2. PWA stores in `httpOnly` cookie.  
+3. Requests to `/api/app/**` carry token ⇢ Kong adds to upstream header.  
+4. NestJS verifies via `@nestjs/jwt` + JWKS caching.  
+5. NestJS-to-FastAPI calls: service-token (M2M) header to bypass per-user verify but propagate `x-user-id`.
+
+---
+
+## 4.  AI-Core (Python / FastAPI)
+
+`apps/ai-core/app/main.py`
+
+```python
+from fastapi import FastAPI, Request, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from .deps import get_user_ctx
+from .routes import chat, persona, debate
+
+app = FastAPI(title="THINKTANK AI")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://thinktank.ai","http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(chat.router, prefix="/api/ai/chat", dependencies=[Depends(get_user_ctx)])
+app.include_router(debate.router, prefix="/api/ai/debate", dependencies=[Depends(get_user_ctx)])
+```
+
+`deps.py` (verify BFF token)
+
+```python
+async def get_user_ctx(request: Request):
+    user_id = request.headers.get("x-user-id")
+    if not user_id:
+        raise HTTPException(401)
+    return {"user_id": user_id}
+```
+
+Core services reuse **fastembed** + **LangChain**—unchanged from previous blueprint.
+
+---
+
+## 5.  SaaS BFF (NestJS)
+
+`apps/api-bff/src/main.ts`
+
+```ts
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { cors: false });
+  app.enableCors({ origin: ['https://thinktank.ai'], credentials: true });
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+  app.use(helmet());
+  app.use(compression());
+  app.use(new RateLimiterRedis(redisClient, { points: 120, duration: 60 }));
+  setupSwagger(app);
+
+  await app.listen(3000);
+}
+```
+
+`debate.gateway.ts` (WS push progress)
+
+```ts
+@WebSocketGateway({ namespace: '/debate' })
+export class DebateGateway {
+  @WebSocketServer() server: Server;
+
+  public sendProgress(userId: string, room: string, payload: any) {
+    this.server.to(`${userId}:${room}`).emit('progress', payload);
+  }
+}
+```
+
+`debate.controller.ts`
+
+```ts
+@Post('/start')
+@UseGuards(AuthGuard('jwt'))
+async startDebate(@Req() req, @Body() dto: DebateDto) {
+  return this.debateSvc.proxyToAI(req.user.sub, dto);
+}
+```
+
+BFF proxies using Axios to `http://ai-core:8000/api/ai/debate`.
+
+---
+
+## 6.  Next.js PWA
+
+### 6.1 App Router Layout
+
+```
+app/
+ ├─ layout.tsx  (Auth0Provider, PlausibleProvider)
+ ├─ page.tsx    (Landing)
+ ├─ chat/
+ │    └─ page.tsx
+ ├─ dashboard/
+ │    ├─ layout.tsx (requiresAuth)
+ │    └─ page.tsx
+ ├─ blog/[slug]/page.tsx   (MDX remote)
+ ├─ api/
+ │    ├─ newsletter/route.ts
+ │    └─ og/route.ts
+```
+
+### 6.2 SEO Component Usage
+
+```tsx
+export const metadata = meta({
+  title: "ThinkTank – AI-powered brainstorming",
+  desc : "Run multi-expert debates and generate action plans in seconds.",
+  slug : "/"
+});
+```
+
+### 6.3 ISR for Blog
+
+```tsx
+export const revalidate = 60; // one minute
+export async function generateStaticParams() { … }
+```
+
+### 6.4 Tailwind + shadcn theme switcher
+
+`tailwind.config.ts`
+
+```ts
+theme:{
+  extend:{
+     colors:{ primary:'#06b6d4'},
+     fontFamily:{ mono:['JetBrains Mono','monospace']}
+  }
+}
+```
+
+---
+
+## 7.  Image & Video Optimisation
+
+1. Next/Image default + AVIF.  
+2. GitHub Action `sharp-cli` compress.  
+3. OG images: Edge-function using `@vercel/og`.  
+4. Video uploads: Mux dashboard, store `playbackId` in MDX front-matter.
+
+---
+
+## 8.  CI/CD Pipelines  (GitHub Actions)
+
+`/.github/workflows/ci.yml`
+
+```yaml
+name: CI
+on: [push,pull_request]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    strategy: { matrix: { dir: [apps/ai-core, apps/api-bff] } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        if: contains(matrix.dir, 'ai-core')
+        with: { python-version: '3.11' }
+      - name: install+test
+        run: |
+          cd ${{ matrix.dir }}
+          [[ -f poetry.lock ]] && pip install poetry && poetry install --with dev
+          [[ -f package.json ]] && npm ci
+          npm test || poetry run pytest -q
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint && pnpm build
+      - name: Lighthouse
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          temporaryPublicStorage: true
+          runs: 3
+```
+
+`cd.yml` builds multi-service images and deploys to Fly.io via secrets.
+
+---
+
+## 9.  Docker Compose Dev
+
+```yaml
+services:
+  postgres:
+    image: postgres:15
+  redis:
+    image: redis:7
+  qdrant:
+    image: qdrant/qdrant
+  api-bff:
+    build: ./apps/api-bff
+    depends_on: [postgres,redis]
+    env_file: .env
+  ai-core:
+    build: ./apps/ai-core
+    depends_on: [postgres,qdrant]
+    env_file: .env
+  kong:
+    image: kong:3
+    volumes:
+      - ./infra/kong.yaml:/etc/kong/kong.yaml
+    environment:
+      - KONG_DATABASE=off
+      - KONG_DECLARATIVE_CONFIG=/etc/kong/kong.yaml
+    ports: ["8000:8000"]
+  web:
+    build: ./apps/web
+    depends_on: [kong]
+    env_file: .env
+    ports: ["3000:3000"]
+```
+
+---
+
+## 10.  Monitoring & Ops
+
+| Tool | Metric |
+|------|--------|
+| Prometheus + Grafana | FastAPI latency, embedding queue length |
+| Sentry (JS + Python) | Front + back errors |
+| Plausible | SEO & page metrics |
+| OpenTelemetry | Distributed traces (Kong > Nest > FastAPI) |
+
+---
+
+## 11.  📄 PLANNING.md (final, condensed)
+
+```md
+# PLANNING.md – THINKTANK-IO
+
+## Vision
+Hybrid AI brainstorming SaaS with growth machinery (SEO, blog, newsletter), Auth0 auth, PWA UX.
+
+## Milestones
+| ID | Goal | Owner | ETA |
+|----|------|-------|-----|
+| M1 | Monorepo scaffold + Docker up | Core | Day 1 |
+| M2 | Auth0 integrated (Nest + Next) | Auth | Day 2 |
+| M3 | AI-core FastAPI debate endpoint | AI | Day 4 |
+| M4 | BFF proxy + WS progress | BE | Day 5 |
+| M5 | Blog (MDX, ISR, OG) live | FE | Day 6 |
+| M6 | Images/video optimisation CI | DevEx | Day 7 |
+| M7 | Lighthouse ≥ 90, SEO checklist pass | FE | Day 8 |
+| M8 | Stripe billing (annual/monthly) | BE | Day 10 |
+| M9 | Public beta deploy Fly.io | Ops | Day 12 |
+| M10| Growth playbook DAGs | Growth | Day 14 |
+
+## KPI
+Latency < 2 s p95, JS payload < 150 KB, CAC ≤ $X (via backlinks), churn < 5 %.
+```
+
+---
+
+## 12.  🗂️ TASKS.md (agent-readable)
+
+```md
+# TASKS.md – THINKTANK-IO
+
+## 0. Bootstrap
+- [ ] `git clone` → `turbo run dev` works
+- [ ] Environment secrets set (.env.example → .env)
+
+## 1. Infrastructure
+- [ ] Configure Kong routes per infra/kong.yaml
+- [ ] Docker-compose dev OK
+- [ ] Fly.io postgres + redis launch
+
+## 2. AI-Core (Python)
+- [ ] Port debate orchestrator
+- [ ] Implement embed service with fastembed
+- [ ] Guardrails XML validate responses
+- [ ] PyTest coverage ≥ 80 %
+
+## 3. BFF (NestJS)
+- [ ] JWT guard w/ Auth0 JWKS caching
+- [ ] WebSocket gateway for debate progress
+- [ ] Rate-limit per user 60/min
+
+## 4. Frontend
+- [ ] Auth0Provider & route guard
+- [ ] Chat UI connect via WS
+- [ ] Dashboard metrics cards
+- [ ] MDX blog template
+- [ ] Newsletter CTA -> Resend API
+- [ ] OG image edge function
+
+## 5. SEO / Content
+- [ ] JSON-LD generator util
+- [ ] Lighthouse CI budget file
+- [ ] `pnpm new-post` script
+
+## 6. DevOps / CI
+- [ ] GitHub Actions green (ci.yml)
+- [ ] CD workflow pushes images, runs Fly deploy
+- [ ] sharp-cli image optimisation step
+- [ ] Sentry DSNs in env
+
+## 7. Growth Automation
+- [ ] Airflow DAG: export new posts → Medium w/canonical
+- [ ] Social Poster GitHub Action
+- [ ] Backlink outreach CSV > Resend sequence
+
+## 8. QA
+- [ ] E2E Cypress tests: login, debate, download plan
+- [ ] Mobile PWA install test
+- [ ] Manual HITL validation of AI answers
+
+```
+
+---
+
+### ✅  Your ultimate, end-to-end, business-grade deployment plan is now **complete**.  
+Commit the above files, follow the milestone timeline, and THINKTANK-IO will be live—with solid tech, blazing performance, search visibility, and a growth engine baked in.  Happy launching! 🚀

@@ -1,0 +1,226 @@
+# 🕸️ crawl4ai – End-to-End Gather/Verify/Deploy Pipeline  
+*(“Just point at a name, we’ll spin up an agent.”)*  
+
+---
+
+## 1. What the Pipeline Does
+
+1. DISCOVER sources → 2. CRAWL & EXTRACT raw artefacts → 3. NORMALISE & SCORE →  
+4. WRITE to **/agents/{slug}/…** folders → 5. HUMAN-VERIFY UI →  
+6. Persona-Builder ingests verified package → 7. Deploys runtime agent.
+
+Mermaid:
+
+```mermaid
+graph LR
+  A[Seed Name / URL]-->B[DISCOVER]
+  B-->C[CRAWL & EXTRACT]
+  C-->D[PROCESS & SCORE]
+  D-->E[Filesystem Writer]
+  E-->F[Human-Verify UI]
+  F--approve-->G[Persona Builder]
+  G-->H[Vector DB + Manifest]
+  H-->I[Agent Runtime Ready]
+```
+
+---
+
+## 2. Folder Layout (Git-style mono-repo)
+
+```
+/agents
+└─ elon_musk/                # ← slug
+   ├─ 00_raw/                # untouched HTML/JSON
+   ├─ 01_processed/
+   │   ├─ tweets.parquet
+   │   ├─ papers.jsonl
+   │   └─ youtube.csv
+   ├─ manifest.yml           # meta + scores
+   ├─ constraints.yml        # guardrails
+   ├─ tal_blocks.yml         # default TAL snippets
+   └─ vector/                # *.pkl or Pinecone IDs
+
+/common
+   ├─ crawler/               # reusable spiders
+   ├─ extractor/
+   ├─ scorer/
+   └─ cli.py
+
+/notebooks
+   └─ crawl4ai_demo.ipynb
+```
+
+---
+
+## 3. Discovery Algorithm (pseudo)
+
+```python
+def discover(name):
+    """
+    Return list[Dict]  -> {type: 'wiki'|'gs'|'yt'|'tweet', url: ...}
+    """
+    seeds = []
+    # 1) Wikipedia
+    seeds += wiki_api_lookup(name)
+    # 2) Google Scholar
+    seeds += scholar_search(name, top_n=3)
+    # 3) Social (X, LinkedIn)
+    seeds += social_handles(name)
+    # 4) YouTube
+    seeds += yt_top_videos(name)
+    return seeds
+```
+
+• Uses SerpAPI or Bing Search for fall-back.  
+• De-duplicates by domain+path, ranked by our earlier **multi-metric score**.
+
+---
+
+## 4. crawl4ai CLI
+
+```bash
+# 1. generate seeds
+crawl4ai discover "Dr. Jane Doe" -o seeds.json
+
+# 2. crawl + extract
+crawl4ai run seeds.json --slug jane_doe
+
+# 3. open verification dashboard
+crawl4ai verify jane_doe   # open in browser
+
+# 4. build & deploy agent
+crawl4ai build jane_doe --deploy
+```
+
+Implemented in `click` with sub-commands.
+
+---
+
+## 5. Crawler Modules (Scrapy+Playwright, Async)
+
+| Spider        | Target            | Notes                                   |
+|---------------|-------------------|-----------------------------------------|
+| `WikiSpider`  | Wikipedia & Wikidata | Infobox; parse references              |
+| `ScholarSpider` | Google/Semantic Scholar | Citations, h-index                    |
+| `XSpider`     | X/Twitter API v2  | Last 200 tweets                         |
+| `YTSpider`    | YouTube Data API  | Most-viewed vids + transcripts          |
+| `GenericNewsSpider` | RSS/NewsAPI  | 10 most recent articles                 |
+
+All spiders emit **structured JSON** to Kafka topic `raw_docs`; a Kafka-Streams job dumps into `/agents/{slug}/00_raw/`.
+
+---
+
+## 6. Extractors & Scorers
+
+```python
+class TweetExtractor(BaseExtractor):
+    pattern = re.compile(r'^https://twitter.com/.+/status/')
+    def parse(self, raw_html):
+        data = twitter_oembed(raw_html)
+        return {
+           "text": data['text'],
+           "retweets": data['retweet_count'],
+           "date": data['created_at']
+        }
+
+class CompositeScorer:
+    WEIGHTS = {"citations":0.25,"followers":0.1,"recency":0.1,"fit":0.25,"engagement":0.15}
+    def score(self, doc, query_embedding):
+        # compute metrics...
+        return final_score
+```
+
+Outputs live in `01_processed/` and aggregated into `manifest.yml`:
+
+```yaml
+name: Jane Doe
+scores:
+  citations: 2143
+  h_index: 28
+  social_reach: 32000
+  composite: 0.82
+top_sources:
+  - 01_processed/papers.jsonl
+  - 01_processed/tweets.parquet
+```
+
+---
+
+## 7. Human Verification UI (Streamlit)
+
+```python
+# run automatically after crawl
+st.header(f"Verify sources for {slug}")
+for file in glob("01_processed/*.jsonl"):
+    st.subheader(file)
+    df = load_df(file)
+    st.dataframe(df.head(20))
+    approved = st.checkbox("Approve", key=file)
+    if not approved: mark_for_deletion(file)
+if st.button("Generate Persona"):
+    trigger_build(slug)
+```
+
+• Only *approved* files are copied into a **`verified`** folder that Persona-Builder consumes.  
+• Users may redact rows or edit metadata inline.
+
+---
+
+## 8. Persona-Builder Hook
+
+```python
+def build_persona(slug):
+    verified_path = f"agents/{slug}/verified"
+    manifest = yaml.safe_load(open(f"agents/{slug}/manifest.yml"))
+    tal_blocks = yaml.safe_load(open(f"agents/{slug}/tal_blocks.yml"))
+    
+    persona_json = summarise_with_llm(verified_path, tal_blocks)
+    embed_and_push(persona_json, verified_path)
+```
+
+This is the existing builder you already have; we just point it at the verified folder.
+
+---
+
+## 9. notebookLLLM-Style Config Notebook
+
+Under `/notebooks/crawl4ai_demo.ipynb` users can:
+
+```python
+from crawl4ai import discover, run, verify_widget
+
+seeds = discover("Prof. Andrew Ng")
+run(seeds, slug="andrew_ng", max_depth=1)
+
+# interactive verification
+verify_widget("andrew_ng")   # Jupyter-embedded Streamlit iframe
+```
+
+Once `verify_widget` returns `True`, notebook auto-calls `build(slug, deploy=True)`.
+
+---
+
+## 10. Security & TOS Foot-notes
+
+1. Robots.txt honoured by default (config override flag `--force` requires admin).  
+2. OAuth tokens stored in Hashicorp Vault.  
+3. PII filter runs post-extractor (`pii_redact=true` in config).  
+4. GDPR “forget” route: `DELETE /agent/{slug}` purges vector namespace + S3 objects.
+
+---
+
+## 11. Next 2-Day Sprint Checklist ✅
+
+| Task | Owner | ETA |
+|------|-------|-----|
+| Scaffold folders & CLI skeleton | dev-01 | EOD Day 1 |
+| Implement `WikiSpider` & `TweetExtractor` | dev-02 | Day 2 AM |
+| Streamlit verify MVP | dev-03 | Day 2 PM |
+| Happy-path Jupyter demo | dev-01 | Day 2 PM |
+| QA & merge to `main` | all | Day 2 EOD |
+
+---
+
+### Done!  
+
+Plug `crawl4ai` into your infra and every future **expert-query → agent** flow becomes reproducible, auditable, and user-approved. 🎯

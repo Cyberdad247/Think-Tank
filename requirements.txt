@@ -1,0 +1,28 @@
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Backend requirements
+requirements = [
+    "fastapi==0.115.9",
+    "uvicorn==0.34.2",
+    "sqlalchemy==2.0.41",
+    "pydantic==2.11.5",
+    "python-dotenv==1.1.0",
+    "langchain==0.3.25",
+    "openai==1.82.0",
+    "chromadb==1.0.11",
+    "pytest==8.3.5",
+    "python-jose==3.3.0",
+    "passlib==1.7.4",
+    "python-multipart==0.0.9"
+]
+
+# Write requirements to file
+with open("requirements.txt", "w") as f:
+    for req in requirements:
+        f.write(f"{req}\n")
+
+print("Requirements file created successfully.")
