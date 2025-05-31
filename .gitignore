@@ -166,3 +166,4 @@ ENV/
 .env
 .env.*
 !.env.example
+.vercel

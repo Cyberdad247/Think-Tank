@@ -1,6 +1,6 @@
 # Think-Tank
 
-A hybrid system that combines task management functionality with advanced AI research capabilities, leveraging RAG (Retrieval-Augmented Generation) and agentic planning.
+A hybrid system that combines task management functionality with advanced AI research capabilities, leveraging RAG (Retrieval-Augmented Generation) and agentic planning. Now optimized for Vercel Edge Functions and Supabase!
 
 ## Project Overview
 
@@ -12,51 +12,48 @@ This dual nature allows Think-Tank to provide intelligent assistance while maint
 
 ## Architecture
 
-The Think-Tank architecture follows a layered approach:
+The Think-Tank architecture follows a modern serverless approach:
 
 - **Frontend Layer**: React and Next.js with component-based architecture
-- **Backend Layer**: Python with FastAPI
-- **AI Core Services**: RAG Engine, Agentic Parser, Workflow Manager, Vector Search
-- **Data Layer**: PostgreSQL, Redis, Chroma Vector DB
-- **Infrastructure**: Docker, Kong API Gateway
+- **Backend Layer**: Next.js Edge Functions (TypeScript)
+- **AI Core Services**: RAG Engine, Vector Search with OpenAI embeddings
+- **Data Layer**: Supabase (PostgreSQL with pgvector extension)
+- **Authentication**: Supabase Auth
 
 ## Technology Stack
 
 ### Frontend Technologies
-- Next.js
-- React
+- Next.js 14+
+- React 18+
 - TypeScript
+- TailwindCSS
 - react-beautiful-dnd
 
 ### Backend Technologies
-- Python
-- FastAPI
-- SQLAlchemy
-- Pydantic
-- Uvicorn
+- Next.js Edge Functions
+- TypeScript
+- Supabase Client SDK
 
 ### AI and ML Technologies
-- LangChain
-- OpenAI API
-- ChromaDB
+- LangChain.js
+- OpenAI API (embeddings and completions)
+- pgvector for vector search
 
 ### Database Technologies
-- PostgreSQL
-- Redis
-- Chroma Vector DB
+- Supabase (PostgreSQL)
+- pgvector extension
 
 ### Infrastructure Technologies
-- Docker
-- Kong API Gateway
-- Docker Compose
+- Vercel
+- Supabase
 
 ## Getting Started
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- Node.js and npm
-- Python 3.9+
+- Node.js 18+ and npm
+- A Supabase account
+- An OpenAI API key
 
 ### Installation
 
@@ -66,65 +63,68 @@ The Think-Tank architecture follows a layered approach:
    cd think-tank
    ```
 
-2. Run the setup script:
+2. Install dependencies:
    ```bash
-   ./setup.sh
+   npm install
    ```
 
-3. Start the services:
+3. Set up environment variables:
    ```bash
-   docker-compose up -d
+   cp .env.local.example .env.local
    ```
+   Then edit `.env.local` with your Supabase and OpenAI credentials.
 
-4. Start the development server:
+4. Set up the Supabase database:
+   - Create a new Supabase project
+   - Run the SQL migration in `supabase/migrations/20250530_initial_schema.sql`
+
+5. Start the development server:
    ```bash
-   # For backend
-   cd backend
-   uvicorn main:app --reload
-   
-   # For frontend
-   cd frontend
    npm run dev
    ```
+
+## Deployment
+
+For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Project Structure
 
 ```
 think-tank/
-├── api.py                      # API endpoints
-├── agentic_parser.py           # Agentic parsing logic
-├── caching.py                  # Caching implementation
-├── config.py                   # Configuration settings
-├── database_optimizations.py   # Database optimization utilities
-├── deployment_validator.py     # Deployment validation tools
-├── docker-compose.yml          # Docker Compose configuration
-├── docker-compose.enhanced.yml # Enhanced Docker Compose configuration
-├── feedback_collector.tsx      # Feedback collection component
-├── integrated_solution.md      # Integration documentation
-├── kong.yml                    # Kong API Gateway configuration
-├── main.py                     # Main application entry point
-├── models.py                   # Database models
-├── page.tsx                    # Main page component
-├── rag_engine.py               # RAG Engine implementation
-├── requirements.txt            # Python dependencies
-├── schemas.py                  # Pydantic schemas
-├── secrets_manager.py          # Secrets management utilities
-├── security.py                 # Security utilities
-├── session.py                  # Session management
-├── setup.sh                    # Setup script
-├── task_service.py             # Task service implementation
-├── task.py                     # Task model
-├── TaskChecklist.tsx           # Task checklist component
-├── TaskContext.tsx             # Task context provider
-├── TaskDashboard.tsx           # Task dashboard component
-├── TaskForm.tsx                # Task form component
-├── TaskItem.tsx                # Task item component
-├── tasks.py                    # Task utilities
-├── test_tasks.py               # Task tests
-├── vector_search.py            # Vector search implementation
-├── vector_search_enhanced.py   # Enhanced vector search
-└── workflow_manager.py         # Workflow management
+├── app/                        # Next.js app directory
+│   ├── api/                    # Edge Function API routes
+│   │   ├── auth/               # Authentication endpoints
+│   │   ├── tasks/              # Task management endpoints
+│   │   └── vector-search/      # Vector search endpoints
+│   ├── globals.css             # Global styles
+│   ├── layout.tsx              # Root layout
+│   └── page.tsx                # Main page component
+├── components/                 # React components
+│   └── TaskChecklist.tsx       # Task checklist component
+├── context/                    # React context providers
+│   └── TaskContext.tsx         # Task context provider
+├── middleware.ts               # Next.js middleware for auth
+├── public/                     # Static assets
+├── supabase/                   # Supabase configuration
+│   └── migrations/             # Database migrations
+├── utils/                      # Utility functions
+│   └── supabase.ts             # Supabase client
+├── .env.local.example          # Example environment variables
+├── DEPLOYMENT.md               # Deployment guide
+├── next.config.js              # Next.js configuration
+├── package.json                # Project dependencies
+├── tailwind.config.js          # Tailwind CSS configuration
+├── tsconfig.json               # TypeScript configuration
+└── vercel.json                 # Vercel deployment configuration
 ```
+
+## Features
+
+- **Task Management**: Create, update, delete, and reorder tasks
+- **Authentication**: Sign up, sign in, and sign out with Supabase Auth
+- **Vector Search**: Search for similar documents using OpenAI embeddings and pgvector
+- **Real-time Updates**: Real-time task updates using Supabase's Realtime functionality
+- **Edge Functions**: Fast, globally distributed API endpoints using Vercel Edge Functions
 
 ## Contributing
 
