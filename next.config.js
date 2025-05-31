@@ -2,9 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  experimental: {
-    appDir: true,
-  },
   // Configure rewrites to proxy API requests to the FastAPI backend in development
   async rewrites() {
     return [

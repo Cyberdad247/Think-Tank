@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check-supabase": "node scripts/check-supabase-setup.js"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.8.7",
@@ -29,13 +30,7 @@
     "eslint-config-next": "^14.0.0",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.31",
-    "tailwindcss": "^3.3.5"
-  },
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "check-supabase": "node scripts/check-supabase-setup.js"
+    "tailwindcss": "^3.3.5",
+    "@types/react-beautiful-dnd": "^13.1.0"
   }
 }
