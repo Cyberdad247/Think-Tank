@@ -346,6 +346,11 @@ This command will create an optimized production build of your Next.js applicati
 yarn build
 ```
 For Render deployments, the **build command** is:
+```bash
+pip install -r requirements.txt
+Make sure that the `requirements.txt` file is located in the root directory of your repository.
+```
+For Render deployments, the **build command** is:
 ```
 the **build command** is:
 ```bash
