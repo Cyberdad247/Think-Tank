@@ -1,0 +1,24 @@
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim-buster
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Install Poetry and dependencies
+RUN pip install poetry
+COPY poetry.lock pyproject.toml ./
+COPY apps/backend/pyproject.toml ./apps/backend/
+COPY packages/ai-agent-core/pyproject.toml ./packages/ai-agent-core/
+
+RUN poetry install --no-root --no-dev
+
+# Copy the rest of the application code
+COPY . .
+
+# Set working directory to backend app
+WORKDIR /app/apps/backend
+
+EXPOSE 8000
+
+# Command to run the FastAPI application
+CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

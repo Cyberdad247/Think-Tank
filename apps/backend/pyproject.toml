@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "backend"
+version = "1.0.0"
+description = "Backend service for Think-Tank"
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.111.0"
+uvicorn = {extras = ["standard"], version = "^0.30.1"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

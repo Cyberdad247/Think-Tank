@@ -1,0 +1,76 @@
+# Basic CI/CD pipeline for Think-Tank monorepo
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'think-tank-monorepo/package-lock.json'
+
+      - name: Install Monorepo Dependencies
+        run: npm install --prefix think-tank-monorepo
+
+      - name: Lint JavaScript Applications
+        run: npm run lint --workspace=apps/frontend --workspace=packages/ui # Example linting specific workspaces
+        working-directory: think-tank-monorepo
+
+      - name: Run JavaScript Tests
+        run: npm run test --workspace=apps/frontend
+        working-directory: think-tank-monorepo
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: 'poetry'
+          cache-dependency-path: 'think-tank-monorepo/poetry.lock' # Assuming poetry.lock will exist after init
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+          poetry config virtualenvs.in-project true
+        working-directory: think-tank-monorepo
+
+      - name: Install Python Dependencies (Backend)
+        run: poetry install --no-root
+        working-directory: think-tank-monorepo/apps/backend
+
+      - name: Install Python Dependencies (AI Agent)
+        run: poetry install --no-root
+        working-directory: think-tank-monorepo/apps/ai-agent
+
+      # Placeholder for Python linting and testing
+      - name: Lint Python Applications
+        run: echo "Python linting placeholder"
+        working-directory: think-tank-monorepo
+
+      - name: Run Python Tests
+        run: echo "Python testing placeholder"
+        working-directory: think-tank-monorepo
+
+      - name: Build Docker Images (Conceptual)
+        run: |
+          echo "Building Docker images for frontend, backend, and AI agent services."
+          echo "Use 'docker build -f infra/docker/Dockerfile.frontend -t frontend-app .' for frontend"
+          echo "Use 'docker build -f infra/docker/Dockerfile.backend -t backend-app .' for backend"
+          echo "Use 'docker build -f infra/docker/Dockerfile.ai-agent -t ai-agent .' for AI agent"
+        working-directory: think-tank-monorepo
+
+      - name: Deploy (Conceptual)
+        run: echo "Deployment steps go here."

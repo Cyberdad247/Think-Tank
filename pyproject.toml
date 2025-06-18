@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "think-tank-monorepo"
+version = "0.1.0"
+description = "Monorepo for Think-Tank project"
+authors = ["Your Name <you@example.com>"]
+packages = [{include = "apps"}, {include = "packages"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

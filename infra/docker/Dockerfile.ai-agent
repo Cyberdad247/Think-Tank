@@ -1,0 +1,11 @@
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim-buster
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Expose the port the app runs on (example, adjust as needed)
+EXPOSE 8001
+
+# Placeholder command
+CMD ["echo", "AI Agent Dockerfile placeholder"]

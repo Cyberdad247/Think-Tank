@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "ai-agent"
+version = "1.0.0"
+description = "AI Agent service for Think-Tank"
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+chromadb = "^0.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
