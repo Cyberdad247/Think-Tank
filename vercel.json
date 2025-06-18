@@ -1,0 +1,43 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "regions": ["iad1"],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://snklioztizbnzuzpyjcz.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNua2xpb3p0aXpibnp1enB5amN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2NDQwNjMsImV4cCI6MjA2NDIyMDA2M30.STM0hUCRy-78cGM1fyu7RXK69pcWzkh0gbUP3VOJjic",
+    "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNua2xpb3p0aXpibnp1enB5amN6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0ODY0NDA2MywiZXhwIjoyMDY0MjIwMDYzfQ.V3I7AlxNZwDCEE9rkvz3M1V0XIYmCX8TtcvguW1Y9ec",
+    "OPENAI_EMBEDDING_MODEL": "text-embedding-ada-002",
+    "OPENAI_MODEL": "gpt-4",
+    "POSTGRES_URL_NON_POOLING": "postgres://postgres.snklioztizbnzuzpyjcz:bXKw5nbpm2VFhkrb@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require"
+  }
+}
