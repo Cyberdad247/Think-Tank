@@ -1,4 +1,4 @@
-import { useState, useRef, FormEvent } from 'react';
+import { useState, useRef, FormEvent, useEffect } from 'react';
 
 interface VoteTally {
   [key: string]: number;
@@ -10,46 +10,72 @@ const HomePage: React.FC = () => {
   const [finalAnswer, setFinalAnswer] = useState<string | null>(null);
   const [voteTally, setVoteTally] = useState<VoteTally | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [sseError, setSseError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    if (!isLoading && finalAnswer === null && reasoningTrace.length > 0 && sseError === null) {
+      setSseError("The debate concluded unexpectedly. No final answer was provided.");
+    }
+  }, [isLoading, finalAnswer, sseError, reasoningTrace]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
 
-    // Reset all states for a new query
     setReasoningTrace([]);
     setFinalAnswer(null);
     setVoteTally(null);
+    setSseError(null);
     setIsLoading(true);
 
-    // Establish SSE connection to the debate stream endpoint
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
     eventSourceRef.current = new EventSource(`/api/debate/stream?query=${encodeURIComponent(query)}`);
 
     eventSourceRef.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        // Assuming data.type and data.payload are always present as per your example
         if (data.type === 'progress') {
           setReasoningTrace((prev) => [...prev, data.payload.trace_step]);
         } else if (data.type === 'final') {
           setFinalAnswer(data.payload.answer);
           setVoteTally(data.payload.votes);
-          setReasoningTrace((prev) => [...prev, data.payload.full_trace]); // Append full trace at the end
-          setIsLoading(false); // Debate concluded
+          // If full_trace is part of the final payload, append it
+          if (data.payload.full_trace) {
+            setReasoningTrace((prev) => [...prev, data.payload.full_trace]);
+          }
+          setIsLoading(false);
+          eventSourceRef.current?.close();
+        } else if (data.type === 'error') { // Handle explicit error messages from backend stream
+          setSseError(data.payload.message || "An error occurred during the debate process.");
+          setIsLoading(false);
           eventSourceRef.current?.close();
         }
       } catch (error) {
         console.error('Failed to parse SSE message or unknown event type:', error);
+        setSseError("Error processing data from the server.");
+        setIsLoading(false);
+        eventSourceRef.current?.close();
       }
     };
 
     eventSourceRef.current.onerror = (error) => {
       console.error('EventSource failed:', error);
-      eventSourceRef.current?.close();
+      // Check if it's not already a more specific error from onmessage
+      if (!sseError) {
+        setSseError("Connection to debate stream failed. Please try again later.");
+      }
       setIsLoading(false);
+      eventSourceRef.current?.close();
     };
 
     eventSourceRef.current.onopen = () => {
       console.log('SSE connection opened for debate stream.');
+      setSseError(null); // Clear any previous connection errors on successful open
     };
   };
 
@@ -76,9 +102,18 @@ const HomePage: React.FC = () => {
           </button>
         </form>
 
+        {sseError && (
+          <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md">
+            <p>{sseError}</p>
+          </div>
+        )}
+
         <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-md h-96 overflow-y-auto">
-          {isLoading && reasoningTrace.length === 0 && finalAnswer === null && (
+          {isLoading && reasoningTrace.length === 0 && !finalAnswer && !sseError && (
             <p className="text-gray-700">Waiting for debate to start...</p>
+          )}
+          {isLoading && sseError && ( /* Show a message if loading but an error has occurred */
+            <p className="text-gray-700">Attempting to process debate, but an issue occurred...</p>
           )}
 
           {reasoningTrace.length > 0 && (
@@ -112,7 +147,8 @@ const HomePage: React.FC = () => {
             </div>
           )}
 
-          {!isLoading && reasoningTrace.length === 0 && finalAnswer === null && (
+          {/* Initial state message or if debate ended without error but also without answer and trace */}
+          {!isLoading && !finalAnswer && reasoningTrace.length === 0 && !sseError && (
             <p className="text-gray-700">Enter a query to start a debate.</p>
           )}
         </div>
